@@ -486,27 +486,3 @@ null = """
 """
 assert fredson_parse(null) == json.loads(null), \
     f"actual: {fredson_parse(null)}"
-
-
-with open('../temp_gamedata_pretty.json') as f:
-    raw = f.read()
-
-t1 = time.perf_counter()
-fredson_game_data = fredson_parse(raw)
-t2 = time.perf_counter()
-
-time_fredson = t2 - t1
-
-print(f"fredson parse 200 KB of JSON: {time_fredson}")
-
-t3 = time.perf_counter()
-builtin_game_data = json.loads(raw)
-t4 = time.perf_counter()
-
-time_builtin = t4 - t3
-
-print(f"built in json parse 200 KB of JSON: {time_builtin}")
-
-print(f"difference: {time_fredson/time_builtin} times slower")
-
-# Pretty print and try to find out what's wrong with diff.
