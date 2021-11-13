@@ -1,6 +1,10 @@
-
+import json
 from collections import deque
 from tokenizer import tokenize, Token, TokenType
+
+
+class ParseError(Exception):
+    pass
 
 
 def fredson_parse(raw_json: str) -> dict:
@@ -9,33 +13,30 @@ def fredson_parse(raw_json: str) -> dict:
     return parsed_json
 
 
+# What follows is a recursive descent parser that parses JSON according to the grammar
+# found at www.json.org. Each function has a comment that indicates which grammar rule
+# the function is tasked with parsing.
 def parse_json(tokens):
-    """
-    json
-        element
-    """
+    # json
+    #     element
     return parse_element(tokens)
 
 
 def parse_element(tokens):
-    """
-    element
-        ws value ws
-    """
+    # element
+    #     ws value ws
     return parse_value(tokens)
 
 
 def parse_value(tokens):
-    """
-    value
-        object
-        array
-        string
-        number
-        "true"
-        "false"
-        "null"
-    """
+    # value
+    #     object
+    #     array
+    #     string
+    #     number
+    #     "true"
+    #     "false"
+    #     "null"
     if tokens[0].token_type == TokenType.LEFT_BRACE:
         return parse_object(tokens)
     elif tokens[0].token_type == TokenType.LEFT_BRACKET:
@@ -55,17 +56,20 @@ def parse_value(tokens):
 
 
 def parse_object(tokens: deque[Token]) -> dict:
-    """
-    object
-        '{' ws '}'
-        '{' members '}'
-    """
+    # object
+    #     '{' ws '}'
+    #     '{' members '}'
     obj = {}
 
     if tokens[0].token_type != TokenType.LEFT_BRACE:
         raise Exception(f"parse_object must start with left brace {tokens[0]}")
 
-    tokens.popleft()  # pop left brace.
+    tokens.popleft()
+
+    # Early return if empty obj.
+    if tokens[0].token_type == TokenType.RIGHT_BRACE:
+        tokens.popleft()
+        return obj
 
     members = parse_members(tokens)
     for member in members:
@@ -80,15 +84,18 @@ def parse_object(tokens: deque[Token]) -> dict:
 
 
 def parse_array(tokens):
-    """
-    array
-        '[' ws ']'
-        '[' elements ']'
-    """
+    # array
+    #     '[' ws ']'
+    #     '[' elements ']'
     if tokens[0].token_type != TokenType.LEFT_BRACKET:
         raise Exception(f"parse_array must start with left bracket {tokens[0]}")
 
     tokens.popleft()  # pop left bracket.
+
+    # Handle empty list by returning an empty list early.
+    if tokens[0].token_type == TokenType.RIGHT_BRACKET:
+        tokens.popleft()
+        return []
 
     elements = parse_elements(tokens)
 
@@ -101,11 +108,9 @@ def parse_array(tokens):
 
 
 def parse_elements(tokens):
-    """
-    elements
-        element
-        element ',' elements
-    """
+    # elements
+    #     element
+    #     element ',' elements
     element = parse_element(tokens)
 
     elements = []
@@ -117,10 +122,8 @@ def parse_elements(tokens):
 
 
 def parse_string(tokens):
-    """
-    string
-        '"' characters '"'
-    """
+    # string
+    #     '"' characters '"'
     if tokens[0].token_type != TokenType.STRING:
         raise Exception('Not TokenType STRING in parse_string.')
 
@@ -129,10 +132,8 @@ def parse_string(tokens):
 
 
 def parse_number(tokens):
-    """
-    number
-        integer fraction exponent
-    """
+    # number
+    #     integer fraction exponent
     convert_to_float = False
     number = ""
     number += parse_integer(tokens)
@@ -153,13 +154,11 @@ def parse_number(tokens):
 
 
 def parse_integer(tokens):
-    """
-    integer
-        digit
-        onenine digits
-        '-' digit
-        '-' onenine digits
-    """
+    # integer
+    #     digit
+    #     onenine digits
+    #     '-' digit
+    #     '-' onenine digits
     minus = ""
     if tokens[0].token_type == TokenType.MINUS:
         minus = tokens.popleft()
@@ -172,11 +171,9 @@ def parse_integer(tokens):
 
 
 def parse_fraction(tokens):
-    """
-    fraction
-        ""
-        '.' digits
-    """
+    # fraction
+    #     ""
+    #     '.' digits
     dot = tokens.popleft()
 
     if tokens[0].token_type != TokenType.DIGITS and tokens[0].token_type != TokenType.ZERO_DIGITS:
@@ -187,12 +184,10 @@ def parse_fraction(tokens):
 
 
 def parse_exponent(tokens):
-    """
-    exponent
-        ""
-        'E' sign digits
-        'e' sign digits
-    """
+    # exponent
+    #     ""
+    #     'E' sign digits
+    #     'e' sign digits
     exponent = tokens.popleft().lexeme
 
     if tokens[0].token_type == TokenType.PLUS or tokens[0].token_type == TokenType.MINUS:
@@ -206,26 +201,24 @@ def parse_exponent(tokens):
 
 
 def parse_true(tokens):
-    true_token = tokens.popleft()
+    tokens.popleft()  # discards the true token.
     return True
 
 
 def parse_false(tokens):
-    false_token = tokens.popleft()
+    tokens.popleft()  # discards the false token.
     return False
 
 
 def parse_null(tokens):
-    null_token = tokens.popleft()
+    tokens.popleft()  # discards the null token.
     return None
 
 
 def parse_members(tokens):
-    """
-    members
-        member
-        member ',' members
-    """
+    # members
+    #     member
+    #     member ',' members
     member = parse_member(tokens)
 
     members = []
@@ -237,10 +230,8 @@ def parse_members(tokens):
 
 
 def parse_member(tokens):
-    """
-    member
-        ws string ws ':' element
-    """
+    # member
+    #     ws string ws ':' element
     if tokens[0].token_type != TokenType.STRING:
         raise Exception('Missing string in parse_member')
 
@@ -254,3 +245,10 @@ def parse_member(tokens):
     element = parse_element(tokens)
 
     return {string: element}
+
+
+if __name__ == '__main__':
+    # bad = '{"foo": "bar"'
+    # fredson_parse(bad)
+    # json.loads(bad)
+    pass
