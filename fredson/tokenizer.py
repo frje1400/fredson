@@ -1,33 +1,12 @@
 import re
-
-from collections import deque, namedtuple
-from enum import Enum, auto
-
 import unicodedata
 
-
-class TokenType(Enum):
-    LEFT_BRACE = auto()
-    RIGHT_BRACE = auto()
-    STRING = auto()
-    SEMICOLON = auto()
-    LEFT_BRACKET = auto()
-    RIGHT_BRACKET = auto()
-    COMMA = auto()
-    DIGITS = auto()
-    ZERO_DIGITS = auto()
-    DOT = auto()
-    EXPONENT = auto()
-    MINUS = auto()
-    PLUS = auto()
-    TRUE = auto()
-    FALSE = auto()
-    NULL = auto()
+from collections import deque
+from definitions import TokenType, Token, CharacterQueue
+from token_queue import TokenQueue
 
 
-Token = namedtuple('Token', ['token_type', 'lexeme'])
-
-simple_tokens = {
+SIMPLE_TOKENS = {
     '{': TokenType.LEFT_BRACE,
     '}': TokenType.RIGHT_BRACE,
     ':': TokenType.SEMICOLON,
@@ -41,13 +20,13 @@ simple_tokens = {
     ']': TokenType.RIGHT_BRACKET
 }
 
-keywords = {
+KEYWORDS = {
     'true': TokenType.TRUE,
     'false': TokenType.FALSE,
     'null': TokenType.NULL
 }
 
-valid_after_backslash = {
+VALID_AFTER_BACKSLASH = {
     '\"': '\"',
     '/': '/',
     'b': '\b',
@@ -57,93 +36,55 @@ valid_after_backslash = {
     't': '\t'
 }
 
-white_space = re.compile(r'\s')
-digits = re.compile(r'[0-9]')
-letters = re.compile(r'\w')
-u_hex_hex_hex_hex = re.compile(r'u[a-fA-F0-9]{4}')
+WHITE_SPACE = re.compile(r'\s')
+DIGITS = re.compile(r'[0-9]')
+LETTERS = re.compile(r'\w')
+U_HEX_HEX_HEX_HEX = re.compile(r'u[a-fA-F0-9]{4}')
 
 
-class TokenizationError(Exception):
-    pass
-
-
-class Characters:
-    def __init__(self, string: str):
-        self.string = string
-        self.size = len(string)
-        self.current = 0
-
-    def __len__(self) -> int:
-        return self.size - self.current
-
-    def __getitem__(self, index) -> str:
-        return self.string[index + self.current]
-
-    def take(self, n) -> str:
-        s = self.string[self.current:self.current + n]
-        self.current += n
-        return s
-
-    def peek(self, n=1):
-        return self.string[self.current:self.current + n]
-
-    def next(self) -> str:
-        char = self.string[self.current]
-        self.current += 1
-        return char
-
-    def ignore(self) -> None:
-        self.current += 1
-
-    def error(self, message) -> None:
-        error_arrow = "\n" + " " * self.current + "^"
-        error_message = f"\n{self.string}{error_arrow}\n{message}"
-        raise TokenizationError(error_message)
-
-
-def tokenize(raw_json) -> deque[Token]:
+def tokenize(raw_json) -> TokenQueue:
     tokens = deque()
-    characters = Characters(raw_json)
+    characters = CharacterQueue(raw_json)
 
     while len(characters) > 0:
         first_char = characters[0]
 
-        if first_char in simple_tokens:
-            token = Token(simple_tokens[first_char], characters.next())
+        if first_char in SIMPLE_TOKENS:
+            token = Token(SIMPLE_TOKENS[first_char], characters.next())
             tokens.append(token)
         elif first_char == '"':
             token = json_string(characters)
             tokens.append(token)
-        elif white_space.match(characters[0]):
-            characters.next()
-        elif digits.match(characters[0]):
+        elif WHITE_SPACE.match(characters[0]):
+            tokens.append(Token(TokenType.WHITESPACE, characters.next()))
+        elif DIGITS.match(characters[0]):
             token = number(characters)
             tokens.append(token)
-        elif letters.match(characters[0]):
+        elif LETTERS.match(characters[0]):
             token = keyword(characters)
             tokens.append(token)
         else:
-            raise Exception(f"invalid char: {first_char}")
+            raise characters.error(f"Invalid char: {first_char}")
 
-    return tokens
+    return TokenQueue(tokens)
 
 
-def keyword(characters: Characters):
+def keyword(characters: CharacterQueue):
     word_characters = []
-    while len(characters) > 0 and letters.match(characters[0]):
+    while len(characters) > 0 and LETTERS.match(characters[0]):
         word_characters.append(characters.next())
 
     word = "".join(word_characters)
 
-    if word in keywords:
-        return Token(keywords[word], word)
+    if word in KEYWORDS:
+        return Token(KEYWORDS[word], word)
     else:
         characters.error('Illegal keyword.')
 
 
-def number(characters: Characters) -> Token:
+def number(characters: CharacterQueue) -> Token:
     number_characters = []
-    while len(characters) > 0 and digits.match(characters[0]):
+    while len(characters) > 0 and DIGITS.match(characters[0]):
         number_characters.append(characters.next())
 
     num = "".join(number_characters)
@@ -154,7 +95,7 @@ def number(characters: Characters) -> Token:
         return Token(TokenType.DIGITS, num)
 
 
-def json_string(characters: Characters) -> Token:
+def json_string(characters: CharacterQueue) -> Token:
     characters.ignore()  # pop opening quotation mark.
     string = []
 
@@ -174,7 +115,7 @@ def json_string(characters: Characters) -> Token:
         # If this matching what it says in the rfc?
         # https://www.rfc-editor.org/rfc/rfc8259#section-7
         if unicodedata.category(first_char)[0] == 'C':
-            raise Exception(f"Illegal control character found in string: {first_char}")
+            raise characters.error(f"Illegal control character.")
 
         if first_char == "\\":
             next_char = handle_escape(characters)
@@ -186,16 +127,16 @@ def json_string(characters: Characters) -> Token:
     return Token(TokenType.STRING, "".join(string))
 
 
-def handle_escape(characters: Characters) -> str:
-    if characters[0] in valid_after_backslash:
-        return valid_after_backslash[characters.next()]
+def handle_escape(characters: CharacterQueue) -> str:
+    if characters[0] in VALID_AFTER_BACKSLASH:
+        return VALID_AFTER_BACKSLASH[characters.next()]
     elif characters[0] == 'u':
         return starts_with_unicode(characters)
     else:
         raise characters.error("Illegal escape character.")
 
 
-def starts_with_unicode(characters: Characters) -> str:
+def starts_with_unicode(characters: CharacterQueue) -> str:
     """If the characters start with u[a-fA-F0-9]{4} this method uses the four
     hex digits to return the corresponding character.
 
@@ -203,16 +144,62 @@ def starts_with_unicode(characters: Characters) -> str:
     because chr(int('0063', 16)) -> 'c'.
     """
     if len(characters) < 5:
-        raise Exception("Not enough characters in starts_with_unicode.")
+        characters.error("Not enough hex characters to parse unicode escape.")
 
     first_five = characters.take(5)
-    without_u = first_five[1:]
+    code_point = first_five[1:]
 
-    if re.match(u_hex_hex_hex_hex, first_five):
-        return chr(int(without_u, 16))
+    if re.match(U_HEX_HEX_HEX_HEX, first_five):
+        if is_high_surrogate(code_point):
+            # A high surrogate must be followed by a low surrogate. The high and low
+            # surrogates are then combined to create a code point that is bigger than
+            # 16 bits. This is looks strange but its purpose is to allow JSON to express
+            # unicode using the unicode escape syntax (\u_hex_hex_hex_hex) while
+            # simultaneously only using 16 bits per code point to stay compatible with
+            # utf-16.
+            low_surrogate = extract_low_surrogate(characters)
+            combined_code_point = combine_high_low_surrogates(code_point, low_surrogate)
+            return chr(combined_code_point)
+
+        return chr(int(code_point, 16))
     else:
         characters.error("Illegal unicode escape.")
 
 
-if __name__ == '__main__':
-    pass
+def combine_high_low_surrogates(high_surrogate: str, low_surrogate: str) -> int:
+    """Combines a high and low surrogate pair into a unicode code point."""
+    # Algorithm for combining a high and low surrogate pair into a unicode code point:
+    #   1. Take the high surrogate (0xD801) and subtract 0xD800, then multiply by 0x400,
+    #   2. Take the low surrogate (0xDC37) and subtract 0xDC00.
+    #   3. Add these two results together (0x0437), and finally add 0x10000 to get the final decoded UTF-32 code point.
+    # source: https://en.wikipedia.org/wiki/UTF-16#U+D800_to_U+DFFF
+    high = (int(high_surrogate, 16) - 0xD800) * 0x400
+    low = int(low_surrogate, 16) - 0xDC00
+    result = high + low + 0x10000
+    return result
+
+
+def extract_low_surrogate(characters: CharacterQueue) -> str:
+    first_six = characters.take(6)
+
+    if re.match(r'\\u[a-fA-F0-9]{4}', first_six):
+        code_point = first_six[2:]
+        if is_low_surrogate(code_point) is False:
+            characters.error("""Invalid codepoint after high surrogate.
+            Only DC00-DFFF are valid low surrogates.""")
+        else:
+            return code_point
+    else:
+        characters.error("Couldn't find a unicode escape after high surrogate.")
+
+
+def is_high_surrogate(code_point: str) -> bool:
+    start = 0xD800
+    end_inclusive = 0xDBFF
+    return start <= int(code_point, 16) <= end_inclusive
+
+
+def is_low_surrogate(code_point: str) -> bool:
+    start = 0xDC00
+    end_inclusive = 0xDFFF
+    return start <= int(code_point, 16) <= end_inclusive
