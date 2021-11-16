@@ -1,4 +1,4 @@
 .idea/
 .venv/
-./fredson/test/.pytest_cache/
-./fredson/__pycache__/
+/fredson/__pycache__/
+/fredson/test/.pytest_cache/
