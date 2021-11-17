@@ -1,10 +1,9 @@
 import re
-import unicodedata
 
 from collections import deque
 from definitions import TokenType, Token, CharacterQueue
 from token_queue import TokenQueue
-
+from typing import Optional
 
 SIMPLE_TOKENS = {
     '{': TokenType.LEFT_BRACE,
@@ -28,6 +27,7 @@ KEYWORDS = {
 
 VALID_AFTER_BACKSLASH = {
     '\"': '\"',
+    '\\': '\\',
     '/': '/',
     'b': '\b',
     'f': '\f',
@@ -84,15 +84,14 @@ def keyword(characters: CharacterQueue):
 
 def number(characters: CharacterQueue) -> Token:
     number_characters = []
+
     while len(characters) > 0 and DIGITS.match(characters[0]):
         number_characters.append(characters.next())
 
     num = "".join(number_characters)
 
-    if num.startswith("0") and len(num) > 1:
-        return Token(TokenType.ZERO_DIGITS, num)
-    else:
-        return Token(TokenType.DIGITS, num)
+    return Token(TokenType.ZERO_DIGITS, num) if num.startswith("0") and len(num) > 1 \
+        else Token(TokenType.DIGITS, num)
 
 
 def json_string(characters: CharacterQueue) -> Token:
@@ -101,23 +100,13 @@ def json_string(characters: CharacterQueue) -> Token:
 
     while characters[0] != '"':
         first_char = characters.next()
-        # According to the JSON spec you are not allowed to have "control characters"
-        # in strings. An example of a control character is \n for new line. Because
-        # JSON is unicode aware, it is not enough to look at the control characters
-        # in the ASCII charset.
-        #
-        # The unicode standard defines certain categories for characters
-        # where "control" is one such category. The unicode category for each character
-        # is retrieved using Python's unicodedata module. The category is a one or two
-        # character code that always starts with C for control characters.
-        # https://www.unicode.org/reports/tr44/#GC_Values_Table
 
-        # If this matching what it says in the rfc?
-        # https://www.rfc-editor.org/rfc/rfc8259#section-7
-        if unicodedata.category(first_char)[0] == 'C':
+        # Characters U+0000 (0) through U+001F (31) are control characters that must be
+        # escaped. If we find such a character here, before we have seen a \, that is an
+        # illegal character.
+        if 0 <= ord(first_char) <= 31:
             raise characters.error(f"Illegal control character.")
-
-        if first_char == "\\":
+        elif first_char == "\\":
             next_char = handle_escape(characters)
             string.append(next_char)
         else:
@@ -157,40 +146,47 @@ def starts_with_unicode(characters: CharacterQueue) -> str:
             # unicode using the unicode escape syntax (\u_hex_hex_hex_hex) while
             # simultaneously only using 16 bits per code point to stay compatible with
             # utf-16.
-            low_surrogate = extract_low_surrogate(characters)
-            combined_code_point = combine_high_low_surrogates(code_point, low_surrogate)
-            return chr(combined_code_point)
+            return combine_high_low_surrogates(characters, code_point)
 
         return chr(int(code_point, 16))
     else:
         characters.error("Illegal unicode escape.")
 
 
-def combine_high_low_surrogates(high_surrogate: str, low_surrogate: str) -> int:
-    """Combines a high and low surrogate pair into a unicode code point."""
-    # Algorithm for combining a high and low surrogate pair into a unicode code point:
-    #   1. Take the high surrogate (0xD801) and subtract 0xD800, then multiply by 0x400,
-    #   2. Take the low surrogate (0xDC37) and subtract 0xDC00.
-    #   3. Add these two results together (0x0437), and finally add 0x10000 to get the final decoded UTF-32 code point.
-    # source: https://en.wikipedia.org/wiki/UTF-16#U+D800_to_U+DFFF
-    high = (int(high_surrogate, 16) - 0xD800) * 0x400
-    low = int(low_surrogate, 16) - 0xDC00
-    result = high + low + 0x10000
-    return result
+def combine_high_low_surrogates(characters: CharacterQueue, high_surrogate: str) -> str:
+    low_surrogate_candidate = extract_low_surrogate(characters)
+
+    if low_surrogate_candidate is None:
+        # If we don't have a matching low surrogate the behavior of the builtin JSON module
+        # is to return only the high surrogate.
+        return chr(int(high_surrogate, 16))
+
+    if is_low_surrogate(low_surrogate_candidate) is False:
+        # If you have a high surrogate but then find that the expected low surrogate
+        # isn't valid (i.e. in the range 0xDC00-0xDFFF you have a few different options:
+        #
+        #   1.  You could raise an error because the lack of the low surrogate
+        #       makes it impossible to rebuild the code point using the high + low pair.
+        #   2.  Keep the high surrogate and ignore the invalid low one.
+        #   3.  Decode the invalid low surrogate as a normal \u_hex_hex_hex_hex code point.
+        #
+        # The third option is picked by Python's built in JSON parser and to stay as
+        # compatible as possible with Python's normal behaviour we do that as well.
+        return chr(int(high_surrogate, 16)) + chr(int(low_surrogate_candidate, 16))
+
+    combined_code_point = high_low_surrogate_algorithm(high_surrogate, low_surrogate_candidate)
+    return chr(combined_code_point)
 
 
-def extract_low_surrogate(characters: CharacterQueue) -> str:
-    first_six = characters.take(6)
+def extract_low_surrogate(characters: CharacterQueue) -> Optional[str]:
+    first_six = characters.peek(6)
 
     if re.match(r'\\u[a-fA-F0-9]{4}', first_six):
-        code_point = first_six[2:]
-        if is_low_surrogate(code_point) is False:
-            characters.error("""Invalid codepoint after high surrogate.
-            Only DC00-DFFF are valid low surrogates.""")
-        else:
-            return code_point
+        backslash_u_code_point = characters.take(6)
+        code_point = backslash_u_code_point[2:]
+        return code_point
     else:
-        characters.error("Couldn't find a unicode escape after high surrogate.")
+        return None
 
 
 def is_high_surrogate(code_point: str) -> bool:
@@ -203,3 +199,16 @@ def is_low_surrogate(code_point: str) -> bool:
     start = 0xDC00
     end_inclusive = 0xDFFF
     return start <= int(code_point, 16) <= end_inclusive
+
+
+def high_low_surrogate_algorithm(high_surrogate: str, low_surrogate: str) -> int:
+    """Combines a high and low surrogate pair into a unicode code point."""
+    # Algorithm for combining a high and low surrogate pair into a unicode code point:
+    #   1. Take the high surrogate (0xD801) and subtract 0xD800, then multiply by 0x400,
+    #   2. Take the low surrogate (0xDC37) and subtract 0xDC00.
+    #   3. Add these two results together (0x0437), and finally add 0x10000 to get the final decoded UTF-32 code point.
+    # source: https://en.wikipedia.org/wiki/UTF-16#U+D800_to_U+DFFF
+    high = (int(high_surrogate, 16) - 0xD800) * 0x400
+    low = int(low_surrogate, 16) - 0xDC00
+    result = high + low + 0x10000
+    return result

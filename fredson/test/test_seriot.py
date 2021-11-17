@@ -6,6 +6,7 @@ import pytest
 from definitions import FredsonParseError, FredsonTokenError
 from fredson import fredson_parse
 
+
 def load_json_file(filename):
     with open('seriot_test_suite/' + filename, encoding="utf8") as f:
         input_string = f.read()
@@ -70,7 +71,7 @@ def test_i_object_key_lone_2nd_surrogate():
 def test_i_string_1st_surrogate_but_2nd_missing():
     test_string = load_json_file('i_string_1st_surrogate_but_2nd_missing.json')
     assert fredson_parse(test_string) == json.loads(test_string)
-    
+
 
 def test_i_string_1st_valid_surrogate_2nd_invalid():
     test_string = load_json_file('i_string_1st_valid_surrogate_2nd_invalid.json')
@@ -1260,11 +1261,11 @@ def test_y_number():
     test_string = load_json_file('y_number.json')
     assert fredson_parse(test_string) == json.loads(test_string)
     
-#
-# def test_y_number_0e+1():
-#     test_string = load_json_file('y_number_0e+1.json')
-#     assert fredson_parse(test_string) == json.loads(test_string)
-#
+
+def test_y_number_0e_plus1():
+    test_string = load_json_file('y_number_0e+1.json')
+    assert fredson_parse(test_string) == json.loads(test_string)
+
 
 def test_y_number_0e1():
     test_string = load_json_file('y_number_0e1.json')
@@ -1486,14 +1487,14 @@ def test_y_string_nbsp_uescaped():
     assert fredson_parse(test_string) == json.loads(test_string)
     
 
-# def test_y_string_nonCharacterInUTF_8_U+10FFFF():
-#     test_string = load_json_file('y_string_nonCharacterInUTF-8_U+10FFFF.json')
-#     assert fredson_parse(test_string) == json.loads(test_string)
-#
-#
-# def test_y_string_nonCharacterInUTF_8_U+FFFF():
-#     test_string = load_json_file('y_string_nonCharacterInUTF-8_U+FFFF.json')
-#     assert fredson_parse(test_string) == json.loads(test_string)
+def test_y_string_nonCharacterInUTF_8_U_plus10FFFF():
+    test_string = load_json_file('y_string_nonCharacterInUTF-8_U+10FFFF.json')
+    assert fredson_parse(test_string) == json.loads(test_string)
+
+
+def test_y_string_nonCharacterInUTF_8_U_plus_FFFF():
+    test_string = load_json_file('y_string_nonCharacterInUTF-8_U+FFFF.json')
+    assert fredson_parse(test_string) == json.loads(test_string)
     
 
 def test_y_string_null_escape():
@@ -1511,10 +1512,10 @@ def test_y_string_pi():
     assert fredson_parse(test_string) == json.loads(test_string)
     
 
-# def test_y_string_reservedCharacterInUTF_8_U+1BFFF():
-#     test_string = load_json_file('y_string_reservedCharacterInUTF-8_U+1BFFF.json')
-#     assert fredson_parse(test_string) == json.loads(test_string)
-#
+def test_y_string_reservedCharacterInUTF_8_U_plus_1BFFF():
+    test_string = load_json_file('y_string_reservedCharacterInUTF-8_U+1BFFF.json')
+    assert fredson_parse(test_string) == json.loads(test_string)
+
 
 def test_y_string_simple_ascii():
     test_string = load_json_file('y_string_simple_ascii.json')
@@ -1526,11 +1527,11 @@ def test_y_string_space():
     assert fredson_parse(test_string) == json.loads(test_string)
     
 
-# def test_y_string_surrogates_U+1D11E_MUSICAL_SYMBOL_G_CLEF():
-#     test_string = load_json_file('y_string_surrogates_U+1D11E_MUSICAL_SYMBOL_G_CLEF.json')
-#     assert fredson_parse(test_string) == json.loads(test_string)
-#
-#
+def test_y_string_surrogates_U_plus1D11E_MUSICAL_SYMBOL_G_CLEF():
+    test_string = load_json_file('y_string_surrogates_U+1D11E_MUSICAL_SYMBOL_G_CLEF.json')
+    assert fredson_parse(test_string) == json.loads(test_string)
+
+
 def test_y_string_three_byte_utf_8():
     test_string = load_json_file('y_string_three-byte-utf-8.json')
     assert fredson_parse(test_string) == json.loads(test_string)
@@ -1540,15 +1541,15 @@ def test_y_string_two_byte_utf_8():
     test_string = load_json_file('y_string_two-byte-utf-8.json')
     assert fredson_parse(test_string) == json.loads(test_string)
     
-#
-# def test_y_string_u+2028_line_sep():
-#     test_string = load_json_file('y_string_u+2028_line_sep.json')
-#     assert fredson_parse(test_string) == json.loads(test_string)
-#
-#
-# def test_y_string_u+2029_par_sep():
-#     test_string = load_json_file('y_string_u+2029_par_sep.json')
-#     assert fredson_parse(test_string) == json.loads(test_string)
+
+def test_y_string_u_plus2028_line_sep():
+    test_string = load_json_file('y_string_u+2028_line_sep.json')
+    assert fredson_parse(test_string) == json.loads(test_string)
+
+
+def test_y_string_u_plus2029_par_sep():
+    test_string = load_json_file('y_string_u+2029_par_sep.json')
+    assert fredson_parse(test_string) == json.loads(test_string)
     
 
 def test_y_string_uEscape():
@@ -1585,37 +1586,37 @@ def test_y_string_unicode_escaped_double_quote():
     test_string = load_json_file('y_string_unicode_escaped_double_quote.json')
     assert fredson_parse(test_string) == json.loads(test_string)
     
-#
-# def test_y_string_unicode_U+10FFFE_nonchar():
-#     test_string = load_json_file('y_string_unicode_U+10FFFE_nonchar.json')
-#     assert fredson_parse(test_string) == json.loads(test_string)
-#
-#
-# def test_y_string_unicode_U+1FFFE_nonchar():
-#     test_string = load_json_file('y_string_unicode_U+1FFFE_nonchar.json')
-#     assert fredson_parse(test_string) == json.loads(test_string)
-#
-#
-# def test_y_string_unicode_U+200B_ZERO_WIDTH_SPACE():
-#     test_string = load_json_file('y_string_unicode_U+200B_ZERO_WIDTH_SPACE.json')
-#     assert fredson_parse(test_string) == json.loads(test_string)
-#
-#
-# def test_y_string_unicode_U+2064_invisible_plus():
-#     test_string = load_json_file('y_string_unicode_U+2064_invisible_plus.json')
-#     assert fredson_parse(test_string) == json.loads(test_string)
-#
-#
-# def test_y_string_unicode_U+FDD0_nonchar():
-#     test_string = load_json_file('y_string_unicode_U+FDD0_nonchar.json')
-#     assert fredson_parse(test_string) == json.loads(test_string)
-#
-#
-# def test_y_string_unicode_U+FFFE_nonchar():
-#     test_string = load_json_file('y_string_unicode_U+FFFE_nonchar.json')
-#     assert fredson_parse(test_string) == json.loads(test_string)
-#
-#
+
+def test_y_string_unicode_U_plus10FFFE_nonchar():
+    test_string = load_json_file('y_string_unicode_U+10FFFE_nonchar.json')
+    assert fredson_parse(test_string) == json.loads(test_string)
+
+
+def test_y_string_unicode_U_plus1FFFE_nonchar():
+    test_string = load_json_file('y_string_unicode_U+1FFFE_nonchar.json')
+    assert fredson_parse(test_string) == json.loads(test_string)
+
+
+def test_y_string_unicode_U_plus200B_ZERO_WIDTH_SPACE():
+    test_string = load_json_file('y_string_unicode_U+200B_ZERO_WIDTH_SPACE.json')
+    assert fredson_parse(test_string) == json.loads(test_string)
+
+
+def test_y_string_unicode_Uplus2064_invisible_plus():
+    test_string = load_json_file('y_string_unicode_U+2064_invisible_plus.json')
+    assert fredson_parse(test_string) == json.loads(test_string)
+
+
+def test_y_string_unicode_UplusFDD0_nonchar():
+    test_string = load_json_file('y_string_unicode_U+FDD0_nonchar.json')
+    assert fredson_parse(test_string) == json.loads(test_string)
+
+
+def test_y_string_unicode_UplusFFFE_nonchar():
+    test_string = load_json_file('y_string_unicode_U+FFFE_nonchar.json')
+    assert fredson_parse(test_string) == json.loads(test_string)
+
+
 def test_y_string_utf8():
     test_string = load_json_file('y_string_utf8.json')
     assert fredson_parse(test_string) == json.loads(test_string)

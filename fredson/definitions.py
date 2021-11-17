@@ -47,6 +47,7 @@ class CharacterQueue:
         return s
 
     def peek(self, n=1):
+        n = n if n < len(self) else len(self)
         return self.string[self.current:self.current + n]
 
     def next(self) -> str:

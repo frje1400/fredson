@@ -12,7 +12,7 @@ def test_{func_name}():
 
 file_names = os.listdir('seriot_test_suite')
 
-with open('test_seriot.py', 'w') as f:
+with open('test_seriot_new.py', 'w') as f:
     f.write("import json")
     f.write("\n")
     f.write("from fredson import fredson_parse")
