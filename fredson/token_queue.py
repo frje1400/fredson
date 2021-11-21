@@ -1,5 +1,13 @@
 from collections import deque
-from definitions import Token, TokenType, FredsonParseError
+from dataclasses import dataclass
+from exceptions import FredsonParseError
+from token_type import TokenType
+
+
+@dataclass
+class Token:
+    token_type: TokenType
+    lexeme: str
 
 
 class TokenQueue:
@@ -13,12 +21,9 @@ class TokenQueue:
     def __getitem__(self, index):
         return self.tokens[index]
 
-    def add(self, token: Token) -> None:
-        self.tokens.append(token)
-
     def popleft(self, error_message=None, *args) -> Token:
         if len(self.tokens) == 0:
-            self.error(error_message)
+            self.error(error_message + ".")
 
         if self.tokens[0].token_type == TokenType.WHITESPACE:
             self.token_history.append(self.tokens.popleft())
@@ -26,8 +31,9 @@ class TokenQueue:
 
         if len(args) > 0:
             if not self.match(*args):
-                self.token_history.append(self.tokens.popleft())
-                self.error(error_message)
+                invalid_token = self.tokens.popleft()
+                self.token_history.append(invalid_token)
+                self.unexpected_token_error(error_message, invalid_token)
 
         token = self.tokens.popleft()
         self.token_history.append(token)
@@ -47,18 +53,23 @@ class TokenQueue:
 
         return False
 
-    def error(self, message):
+    def error(self, message: str):
         history = self.rebuild_history(20)
         raise FredsonParseError(f"\n\n{history} <-- \n\n{message}")
 
-    def rebuild_history(self, nbr_of_tokens):
+    def unexpected_token_error(self, message: str, invalid_token: Token):
+        history = self.rebuild_history(20)
+        # todo: is the history printed with quotes in strings? could be confusing perhaps.
+        raise FredsonParseError(f"\n\n{history} <-- \n\n{message}, not '{invalid_token.lexeme}'")
+
+    def rebuild_history(self, nbr_of_tokens) -> str:
         """Return the n most recent tokens as a string."""
         history_len = len(self.token_history)
         n = nbr_of_tokens if nbr_of_tokens < history_len else history_len
         history = self.token_history[history_len - n:]
         return "".join([token.lexeme for token in history]).strip()
 
-    def empty_after_parse(self):
+    def empty_after_parse(self) -> bool:
         """Verifies that the token queue is empty after finishing the parse."""
         if len(self.tokens) == 0:
             return True

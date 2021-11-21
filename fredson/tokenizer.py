@@ -1,8 +1,9 @@
 import re
 
+from character_queue import CharacterQueue
 from collections import deque
-from definitions import TokenType, Token, CharacterQueue
-from token_queue import TokenQueue
+from token_type import TokenType
+from token_queue import TokenQueue, Token
 from typing import Optional
 
 SIMPLE_TOKENS = {
@@ -10,13 +11,11 @@ SIMPLE_TOKENS = {
     '}': TokenType.RIGHT_BRACE,
     ':': TokenType.SEMICOLON,
     '.': TokenType.DOT,
-    '+': TokenType.PLUS,
-    '-': TokenType.MINUS,
     'e': TokenType.EXPONENT,
     'E': TokenType.EXPONENT,
     ',': TokenType.COMMA,
     '[': TokenType.LEFT_BRACKET,
-    ']': TokenType.RIGHT_BRACKET
+    ']': TokenType.RIGHT_BRACKET,
 }
 
 KEYWORDS = {
@@ -36,8 +35,9 @@ VALID_AFTER_BACKSLASH = {
     't': '\t'
 }
 
-WHITE_SPACE = re.compile(r'\s')
-DIGITS = re.compile(r'[0-9]')
+WHITE_SPACE = {' ', '\n', '\r', '\t'}
+DIGITS = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+DIGITS_AND_DASH = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "-"}
 LETTERS = re.compile(r'\w')
 U_HEX_HEX_HEX_HEX = re.compile(r'u[a-fA-F0-9]{4}')
 
@@ -55,18 +55,28 @@ def tokenize(raw_json) -> TokenQueue:
         elif first_char == '"':
             token = json_string(characters)
             tokens.append(token)
-        elif WHITE_SPACE.match(characters[0]):
+        elif first_char == '+':
+            token = plus_sign(characters)
+            tokens.append(token)
+        elif first_char in WHITE_SPACE:
             tokens.append(Token(TokenType.WHITESPACE, characters.next()))
-        elif DIGITS.match(characters[0]):
+        elif first_char in DIGITS_AND_DASH:
             token = number(characters)
             tokens.append(token)
-        elif LETTERS.match(characters[0]):
+        elif LETTERS.match(first_char):
             token = keyword(characters)
             tokens.append(token)
         else:
             raise characters.error(f"Invalid char: {first_char}")
 
     return TokenQueue(tokens)
+
+
+def plus_sign(characters: CharacterQueue) -> Token:
+    plus = characters.next()
+    if characters.peek() not in DIGITS:
+        characters.error("Plus sign must be followed by [0-9]")
+    return Token(TokenType.PLUS, plus)
 
 
 def keyword(characters: CharacterQueue):
@@ -79,50 +89,57 @@ def keyword(characters: CharacterQueue):
     if word in KEYWORDS:
         return Token(KEYWORDS[word], word)
     else:
-        characters.error('Illegal keyword.')
+        characters.error(f"Illegal keyword '{word}'")
 
 
 def number(characters: CharacterQueue) -> Token:
-    number_characters = []
+    number_chars = [characters.next()]
 
-    while len(characters) > 0 and DIGITS.match(characters[0]):
-        number_characters.append(characters.next())
+    while len(characters) > 0 and characters[0] in DIGITS:
+        number_chars.append(characters.next())
 
-    num = "".join(number_characters)
+    num = "".join(number_chars)
+    token = validate_number(num, characters)
+    return token
 
-    return Token(TokenType.ZERO_DIGITS, num) if num.startswith("0") and len(num) > 1 \
-        else Token(TokenType.DIGITS, num)
+
+def validate_number(num: str, characters: CharacterQueue) -> Token:
+    if num.startswith("-") and len(num) == 1:
+        characters.error("Found single minus sign without number.")
+    elif num.startswith("-") and len(num) > 2 and num[1] == "0":
+        characters.error("Found starting 0 in a number that starts with minus sign.")
+    elif num.startswith("0") and len(num) > 1:
+        return Token(TokenType.ZERO_DIGITS, num)
+    else:
+        return Token(TokenType.DIGITS, num)
 
 
 def json_string(characters: CharacterQueue) -> Token:
     characters.ignore()  # pop opening quotation mark.
     string = []
 
-    while characters[0] != '"':
-        first_char = characters.next()
-
+    while (first_char := characters.next()) != '"':
         # Characters U+0000 (0) through U+001F (31) are control characters that must be
         # escaped. If we find such a character here, before we have seen a \, that is an
         # illegal character.
         if 0 <= ord(first_char) <= 31:
-            raise characters.error(f"Illegal control character.")
+            raise characters.error(f"Illegal control character: {first_char}")
         elif first_char == "\\":
             next_char = handle_escape(characters)
             string.append(next_char)
         else:
             string.append(first_char)
 
-    characters.ignore()  # pop closing quotation mark.
     return Token(TokenType.STRING, "".join(string))
 
 
 def handle_escape(characters: CharacterQueue) -> str:
-    if characters[0] in VALID_AFTER_BACKSLASH:
+    if characters.peek() in VALID_AFTER_BACKSLASH:
         return VALID_AFTER_BACKSLASH[characters.next()]
-    elif characters[0] == 'u':
+    elif characters.peek() == 'u':
         return starts_with_unicode(characters)
     else:
-        raise characters.error("Illegal escape character.")
+        raise characters.error(f"Illegal escape character: {characters[0]}")
 
 
 def starts_with_unicode(characters: CharacterQueue) -> str:
@@ -150,7 +167,7 @@ def starts_with_unicode(characters: CharacterQueue) -> str:
 
         return chr(int(code_point, 16))
     else:
-        characters.error("Illegal unicode escape.")
+        characters.error(f"Illegal unicode escape: {first_five}")
 
 
 def combine_high_low_surrogates(characters: CharacterQueue, high_surrogate: str) -> str:

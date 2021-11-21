@@ -1,4 +1,5 @@
-from definitions import TokenType
+from exceptions import FredsonParseError
+from token_type import TokenType
 from token_queue import TokenQueue
 
 
@@ -8,7 +9,10 @@ from token_queue import TokenQueue
 def parse_json(tokens: TokenQueue) -> dict:
     # json
     #     element
-    return parse_element(tokens)
+    try:
+        return parse_element(tokens)
+    except RecursionError:
+        raise FredsonParseError("The JSON is too deeply nested.")
 
 
 def parse_element(tokens: TokenQueue):
@@ -43,7 +47,7 @@ def parse_value(tokens: TokenQueue):
     elif tokens.match(TokenType.NULL):
         return parse_null(tokens)
     else:
-        tokens.error("Expected start of a value such as a string or object.")
+        tokens.popleft("Expected start of a value such as a string or object", TokenType.LEFT_BRACE)
 
 
 def parse_object(tokens) -> dict:
@@ -58,7 +62,7 @@ def parse_object(tokens) -> dict:
         for member in members:
             obj.update(member)
 
-    right_brace = tokens.popleft("Expected '}'.", TokenType.RIGHT_BRACE)
+    right_brace = tokens.popleft("Expected '}'", TokenType.RIGHT_BRACE)
     return obj
 
 
@@ -80,20 +84,19 @@ def parse_elements(tokens: TokenQueue):
     # elements
     #     element
     #     element ',' elements
-    element = parse_element(tokens)
+    elements = [parse_element(tokens)]
 
-    elements = []
     while tokens.match(TokenType.COMMA):
         comma = tokens.popleft()
-        elements = parse_elements(tokens)
+        elements.append(parse_element(tokens))
 
-    return [element, *elements]
+    return elements
 
 
 def parse_string(tokens: TokenQueue):
     # string
     #     '"' characters '"'
-    string = tokens.popleft("Expected start of string.", TokenType.STRING)
+    string = tokens.popleft("Expected start of string", TokenType.STRING)
     return string.lexeme
 
 
@@ -126,9 +129,7 @@ def parse_integer(tokens: TokenQueue):
     #     '-' digit
     #     '-' onenine digits
     minus = ""
-    if tokens.match(TokenType.MINUS):
-        minus = tokens.popleft()
-    integer = tokens.popleft("Expected integer.", TokenType.DIGITS)
+    integer = tokens.popleft("Expected integer", TokenType.DIGITS)
     return integer.lexeme if minus == "" else "-" + integer.lexeme
 
 
@@ -137,7 +138,7 @@ def parse_fraction(tokens: TokenQueue):
     #     ""
     #     '.' digits
     dot = tokens.popleft("Expected dot.", TokenType.DOT)
-    digits = tokens.popleft("Expected digits after dot.", TokenType.DIGITS, TokenType.ZERO_DIGITS)
+    digits = tokens.popleft("Expected digits after dot", TokenType.DIGITS, TokenType.ZERO_DIGITS)
     return dot.lexeme + digits.lexeme
 
 
@@ -148,10 +149,10 @@ def parse_exponent(tokens: TokenQueue):
     #     'e' sign digits
     exponent = tokens.popleft().lexeme
 
-    if tokens.match(TokenType.PLUS, TokenType.MINUS):
-        exponent += tokens.popleft("Expected '+' or '-'.", TokenType.PLUS, TokenType.MINUS).lexeme
+    if tokens.match(TokenType.PLUS):
+        exponent += tokens.popleft("Expected '+' or '-'", TokenType.PLUS, TokenType.MINUS).lexeme
 
-    exponent += tokens.popleft("Expected digits.", TokenType.DIGITS, TokenType.ZERO_DIGITS).lexeme
+    exponent += tokens.popleft("Expected digits", TokenType.DIGITS, TokenType.ZERO_DIGITS).lexeme
     return exponent
 
 
@@ -174,21 +175,20 @@ def parse_members(tokens: TokenQueue):
     # members
     #     member
     #     member ',' members
-    member = parse_member(tokens)
+    members = [parse_member(tokens)]
 
-    members = []
     while tokens.match(TokenType.COMMA):
         comma = tokens.popleft()
-        members = parse_members(tokens)
+        members.append(parse_member(tokens))
 
-    return [member, *members]
+    return members
 
 
 def parse_member(tokens: TokenQueue):
     # member
     #     ws string ws ':' element
     string = parse_string(tokens)
-    semi_colon = tokens.popleft("Expected ':'.", TokenType.SEMICOLON)
+    semi_colon = tokens.popleft("Expected ':'", TokenType.SEMICOLON)
     element = parse_element(tokens)
     return {string: element}
 
