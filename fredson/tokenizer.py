@@ -1,182 +1,284 @@
 import re
 
-from character_queue import CharacterQueue
 from collections import deque
+from fredson_exceptions import FredsonTokenError
 from token_type import TokenType
 from token_queue import TokenQueue, Token
-from typing import Optional
+from typing import Optional, Callable
 
-SIMPLE_TOKENS = {
-    '{': TokenType.LEFT_BRACE,
-    '}': TokenType.RIGHT_BRACE,
-    ':': TokenType.SEMICOLON,
-    '.': TokenType.DOT,
-    'e': TokenType.EXPONENT,
-    'E': TokenType.EXPONENT,
-    ',': TokenType.COMMA,
-    '[': TokenType.LEFT_BRACKET,
-    ']': TokenType.RIGHT_BRACKET,
-}
 
-KEYWORDS = {
-    'true': TokenType.TRUE,
-    'false': TokenType.FALSE,
-    'null': TokenType.NULL
-}
+class LookupTable:
+    simple_tokens: dict[str, TokenType]
+    keywords: dict[str, TokenType]
+    valid_after_backslash: dict[str, str]
+    valid_whitespace: set[str]
+    digits: set[str]
+    digits_and_dash: set[str]
+    letters_A_Z: set[str]
+    letters_a_z: set[str]
+    letter: set[str]
+    start_of_keyword: set[str]
+    illegal_control_character: set[str]
+    string_termination: set[str]
+    first_char: dict[str, Callable]
 
-VALID_AFTER_BACKSLASH = {
-    '\"': '\"',
-    '\\': '\\',
-    '/': '/',
-    'b': '\b',
-    'f': '\f',
-    'n': '\n',
-    'r': '\r',
-    't': '\t'
-}
+    def __init__(self):
+        self.simple_tokens = {
+            '{': TokenType.LEFT_BRACE,
+            '}': TokenType.RIGHT_BRACE,
+            ':': TokenType.SEMICOLON,
+            '.': TokenType.DOT,
+            'e': TokenType.EXPONENT,
+            'E': TokenType.EXPONENT,
+            ',': TokenType.COMMA,
+            '[': TokenType.LEFT_BRACKET,
+            ']': TokenType.RIGHT_BRACKET,
+        }
 
-WHITE_SPACE = {' ', '\n', '\r', '\t'}
-DIGITS = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
-DIGITS_AND_DASH = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "-"}
-LETTERS = re.compile(r'\w')
-U_HEX_HEX_HEX_HEX = re.compile(r'u[a-fA-F0-9]{4}')
+        self.keywords = {
+            'true': TokenType.TRUE,
+            'false': TokenType.FALSE,
+            'null': TokenType.NULL
+        }
+
+        self.valid_after_backslash = {
+            '\"': '\"',
+            '\\': '\\',
+            '/': '/',
+            'b': '\b',
+            'f': '\f',
+            'n': '\n',
+            'r': '\r',
+            't': '\t'
+        }
+
+        self.valid_whitespace = {' ', '\n', '\r', '\t'}
+        self.digits = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+        self.digits_and_dash = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "-"}
+        self.letters_A_Z = {chr(i) for i in range(65, 91)}
+        self.letters_a_z = {chr(i) for i in range(97, 123)}
+        self.letters = self.letters_A_Z.union(self.letters_a_z)
+        self.start_of_keyword = {'t', 'f', 'n'}
+        self.illegal_control_characters = {chr(n) for n in range(32)}
+        self.string_termination = {'"', '\\', *{illegal for illegal in self.illegal_control_characters}}
+
+        # Maps from a character to the function that handles that character.
+        self.first_char = {}
+
+        # Tokens that are defined as simple tokens consist of a single character, e.g.
+        # '{' and '['.
+        for simple_token in self.simple_tokens:
+            self.first_char[simple_token] = tokenize_simple_token
+        # A number starts with [0-9] or -
+        for digit in self.digits_and_dash:
+            self.first_char[digit] = tokenize_number
+        # Only a limited number of white space characters are allowed in JSON.
+        for white in self.valid_whitespace:
+            self.first_char[white] = tokenize_whitespace
+        # A keyword must start with 'f', 't' or 'n' (false, null and true).
+        for char in self.start_of_keyword:
+            self.first_char[char] = tokenize_keyword
+
+        # A string must start with "
+        self.first_char['"'] = tokenize_json_string
+
+        # The plus sign is handled differently than other simple tokens.
+        self.first_char['+'] = tokenize_plus_sign
 
 
 def tokenize(raw_json) -> TokenQueue:
     tokens = deque()
-    characters = CharacterQueue(raw_json)
+    start_index = 0
+    length = len(raw_json)
+    lookup_table = LookupTable()
 
-    while len(characters) > 0:
-        first_char = characters[0]
-
-        if first_char in SIMPLE_TOKENS:
-            token = Token(SIMPLE_TOKENS[first_char], characters.next())
+    while start_index < length:
+        try:
+            # The main loop of the tokenizer has a finite number of characters that it needs
+            # to look at to decide what to do next. It's faster to decide what to do next by
+            # looking up the character in a dictionary rather than using a series of if/else
+            # statements using the first character.
+            current = raw_json[start_index]
+            func = lookup_table.first_char[current]
+            token, end_index = func(raw_json, start_index, length, lookup_table)
             tokens.append(token)
-        elif first_char == '"':
-            token = json_string(characters)
-            tokens.append(token)
-        elif first_char == '+':
-            token = plus_sign(characters)
-            tokens.append(token)
-        elif first_char in WHITE_SPACE:
-            tokens.append(Token(TokenType.WHITESPACE, characters.next()))
-        elif first_char in DIGITS_AND_DASH:
-            token = number(characters)
-            tokens.append(token)
-        elif LETTERS.match(first_char):
-            token = keyword(characters)
-            tokens.append(token)
-        else:
-            raise characters.error(f"Invalid char: {first_char}")
+            start_index = end_index + 1
+        except KeyError:
+            token_error(raw_json, f"Invalid char: {raw_json[start_index]}", start_index)
+        except IndexError:
+            error_message = "Unexpectedly reached the end of the input string." \
+                            "Did you forget to terminate a string?"
+            token_error(raw_json, error_message, start_index)
 
     return TokenQueue(tokens)
 
 
-def plus_sign(characters: CharacterQueue) -> Token:
-    plus = characters.next()
-    if characters.peek() not in DIGITS:
-        characters.error("Plus sign must be followed by [0-9]")
-    return Token(TokenType.PLUS, plus)
+def token_error(characters: str, message: str, current_index: int) -> None:
+    total_length = len(characters)
+    remaining = total_length - current_index
+    chars_to_grab = remaining if remaining < 20 else 20
+    json_chunk = characters[current_index: current_index + chars_to_grab] \
+        if total_length > 20 else characters
+
+    error_message = f"{json_chunk}  <-\n\n{message}"
+    raise FredsonTokenError(error_message)
 
 
-def keyword(characters: CharacterQueue):
+def tokenize_simple_token(characters: str, current_index: int, length: int,
+                          lookup_table: LookupTable) -> (Token, int):
+    char = characters[current_index]
+    return Token(lookup_table.simple_tokens[char], char), current_index
+
+
+def tokenize_whitespace(characters: str, current_index: int, length: int,
+                        lookup_table: LookupTable) -> (Token, int):
+    return Token(TokenType.WHITESPACE, characters[current_index]), current_index
+
+
+def tokenize_plus_sign(characters: str, current_index: int, length: int,
+                       lookup_table: LookupTable) -> (Token, int):
+    if (current_index + 1 == length) or characters[current_index + 1] not in lookup_table.digits:
+        token_error(characters, "Plus sign must be followed by [0-9]", current_index)
+    return Token(TokenType.PLUS, '+'), current_index
+
+
+def tokenize_keyword(characters: str, current_index: int, length: int,
+                     lookup_table: LookupTable) -> (Token, int):
     word_characters = []
-    while len(characters) > 0 and LETTERS.match(characters[0]):
-        word_characters.append(characters.next())
+
+    while current_index < length:
+        char = characters[current_index]
+        if char in lookup_table.letters_a_z:
+            word_characters.append(char)
+            current_index += 1
+        else:
+            break
 
     word = "".join(word_characters)
 
-    if word in KEYWORDS:
-        return Token(KEYWORDS[word], word)
+    if word in lookup_table.keywords:
+        return Token(lookup_table.keywords[word], word), current_index - 1
     else:
-        characters.error(f"Illegal keyword '{word}'")
+        token_error(characters, f"Illegal keyword '{word}'", current_index)
 
 
-def number(characters: CharacterQueue) -> Token:
-    number_chars = [characters.next()]
+def tokenize_number(characters: str, current_index: int, length: int,
+                    lookup_table: LookupTable) -> (Token, int):
+    number_chars = [characters[current_index]]
+    current_index += 1
 
-    while len(characters) > 0 and characters[0] in DIGITS:
-        number_chars.append(characters.next())
+    while current_index < length and characters[current_index] in lookup_table.digits:
+        number_chars.append(characters[current_index])
+        current_index += 1
 
     num = "".join(number_chars)
-    token = validate_number(num, characters)
-    return token
+    token = validate_number(num, characters, current_index)
+    return token, current_index - 1
 
 
-def validate_number(num: str, characters: CharacterQueue) -> Token:
+def validate_number(num: str, characters: str, current_index: int) -> Token:
     if num.startswith("-") and len(num) == 1:
-        characters.error("Found single minus sign without number.")
+        token_error(characters, "Found single minus sign without number.", current_index)
     elif num.startswith("-") and len(num) > 2 and num[1] == "0":
-        characters.error("Found starting 0 in a number that starts with minus sign.")
+        token_error(characters, "Found starting 0 in a number that starts with minus sign.",
+                    current_index)
     elif num.startswith("0") and len(num) > 1:
         return Token(TokenType.ZERO_DIGITS, num)
     else:
         return Token(TokenType.DIGITS, num)
 
 
-def json_string(characters: CharacterQueue) -> Token:
-    characters.ignore()  # pop opening quotation mark.
-    string = []
+def tokenize_json_string(characters: str, current_index: int, length: int,
+                         lookup_table: LookupTable) -> (Token, int):
+    current_index += 1  # ignore opening "
+    chars_in_string = []
 
-    while (first_char := characters.next()) != '"':
+    char = characters[current_index]
+    while char not in lookup_table.string_termination:
+        chars_in_string.append(char)
+        current_index += 1
+        char = characters[current_index]
+
+    string = "".join(chars_in_string)
+
+    if characters[current_index] == '"':
+        # "fast" path; "easy" string with no escapes or control characters.
+        return Token(TokenType.STRING, string), current_index
+    else:
+        return slow_string(characters, string, current_index, lookup_table)
+
+
+def slow_string(characters: str, partial_string: str, current_index: int,
+                lookup_table: LookupTable) -> (Token, int):
+    string = [partial_string]
+
+    while characters[current_index] != '"':
+        char = characters[current_index]
+
         # Characters U+0000 (0) through U+001F (31) are control characters that must be
         # escaped. If we find such a character here, before we have seen a \, that is an
         # illegal character.
-        if 0 <= ord(first_char) <= 31:
-            raise characters.error(f"Illegal control character: {first_char}")
-        elif first_char == "\\":
-            next_char = handle_escape(characters)
+        if char in lookup_table.illegal_control_characters:
+            token_error(characters, f"Illegal control character: {char}", current_index)
+        elif char == "\\":
+            next_char, end_index = handle_escape(characters, current_index + 1, lookup_table)
+            current_index = end_index
             string.append(next_char)
         else:
-            string.append(first_char)
+            string.append(char)
+            current_index += 1
 
-    return Token(TokenType.STRING, "".join(string))
+    return Token(TokenType.STRING, "".join(string)), current_index
 
 
-def handle_escape(characters: CharacterQueue) -> str:
-    if characters.peek() in VALID_AFTER_BACKSLASH:
-        return VALID_AFTER_BACKSLASH[characters.next()]
-    elif characters.peek() == 'u':
-        return starts_with_unicode(characters)
+def handle_escape(characters, current_index: int, lookup_table: LookupTable) -> (str, int):
+    char = characters[current_index]
+
+    if char in lookup_table.valid_after_backslash:
+        return lookup_table.valid_after_backslash[char], current_index + 1
+    elif char == 'u':
+        return starts_with_unicode(characters, current_index + 1, lookup_table)
     else:
-        raise characters.error(f"Illegal escape character: {characters[0]}")
+        token_error(characters, f"Illegal escape character: {char}", current_index)
 
 
-def starts_with_unicode(characters: CharacterQueue) -> str:
+def starts_with_unicode(characters: str, current_index: int,
+                        lookup_table: LookupTable) -> (str, int):
     """If the characters start with u[a-fA-F0-9]{4} this method uses the four
     hex digits to return the corresponding character.
 
     Example: if the characters start with u0063, this method will return 'c'
     because chr(int('0063', 16)) -> 'c'.
     """
-    if len(characters) < 5:
-        characters.error("Not enough hex characters to parse unicode escape.")
+    code_point = characters[current_index: current_index + 4]
 
-    first_five = characters.take(5)
-    code_point = first_five[1:]
+    # u_hex_hex_hex_hex = r'u[a-fA-F0-9]{4}'
+    hex_hex_hex_hex = re.compile(r'[a-fA-F0-9]{4}')
 
-    if re.match(U_HEX_HEX_HEX_HEX, first_five):
+    if re.match(hex_hex_hex_hex, code_point):
         if is_high_surrogate(code_point):
+            print(f"code_point: {code_point}")
             # A high surrogate must be followed by a low surrogate. The high and low
             # surrogates are then combined to create a code point that is bigger than
             # 16 bits. This is looks strange but its purpose is to allow JSON to express
             # unicode using the unicode escape syntax (\u_hex_hex_hex_hex) while
             # simultaneously only using 16 bits per code point to stay compatible with
             # utf-16.
-            return combine_high_low_surrogates(characters, code_point)
+            return combine_high_low_surrogates(characters, current_index + 4, code_point)
 
-        return chr(int(code_point, 16))
+        return chr(int(code_point, 16)), current_index + 4
     else:
-        characters.error(f"Illegal unicode escape: {first_five}")
+        token_error(characters, f"Illegal unicode escape: {code_point}", current_index)
 
 
-def combine_high_low_surrogates(characters: CharacterQueue, high_surrogate: str) -> str:
-    low_surrogate_candidate = extract_low_surrogate(characters)
+def combine_high_low_surrogates(characters: str, current_index: int,
+                                high_surrogate: str) -> (str, int):
+    low_surrogate_candidate, end_index = extract_low_surrogate(characters, current_index)
 
     if low_surrogate_candidate is None:
         # If we don't have a matching low surrogate the behavior of the builtin JSON module
         # is to return only the high surrogate.
-        return chr(int(high_surrogate, 16))
+        return chr(int(high_surrogate, 16)), end_index
 
     if is_low_surrogate(low_surrogate_candidate) is False:
         # If you have a high surrogate but then find that the expected low surrogate
@@ -189,21 +291,20 @@ def combine_high_low_surrogates(characters: CharacterQueue, high_surrogate: str)
         #
         # The third option is picked by Python's built in JSON parser and to stay as
         # compatible as possible with Python's normal behaviour we do that as well.
-        return chr(int(high_surrogate, 16)) + chr(int(low_surrogate_candidate, 16))
+        return (chr(int(high_surrogate, 16)) + chr(int(low_surrogate_candidate, 16))), end_index
 
     combined_code_point = high_low_surrogate_algorithm(high_surrogate, low_surrogate_candidate)
-    return chr(combined_code_point)
+    return chr(combined_code_point), end_index
 
 
-def extract_low_surrogate(characters: CharacterQueue) -> Optional[str]:
-    first_six = characters.peek(6)
+def extract_low_surrogate(characters: str, current_index: int) -> (Optional[str], int):
+    low_surrogate_candidate = characters[current_index: current_index + 6]
 
-    if re.match(r'\\u[a-fA-F0-9]{4}', first_six):
-        backslash_u_code_point = characters.take(6)
-        code_point = backslash_u_code_point[2:]
-        return code_point
+    if re.match(r'\\u[a-fA-F0-9]{4}', low_surrogate_candidate):
+        code_point = low_surrogate_candidate[2:]
+        return "".join(code_point), current_index + 6
     else:
-        return None
+        return None, current_index
 
 
 def is_high_surrogate(code_point: str) -> bool:
@@ -229,3 +330,9 @@ def high_low_surrogate_algorithm(high_surrogate: str, low_surrogate: str) -> int
     low = int(low_surrogate, 16) - 0xDC00
     result = high + low + 0x10000
     return result
+
+
+if __name__ == '__main__':
+    toks = tokenize('[-]')
+    for t in toks:
+        print(t)

@@ -1,6 +1,6 @@
 from collections import deque
 from dataclasses import dataclass
-from exceptions import FredsonParseError
+from fredson_exceptions import FredsonParseError
 from token_type import TokenType
 
 

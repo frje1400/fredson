@@ -1,5 +1,5 @@
 from tokenizer import tokenize
-from parser import parse_json
+from json_parser import parse_json
 
 import json
 
