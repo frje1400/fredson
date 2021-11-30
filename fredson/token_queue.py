@@ -59,7 +59,6 @@ class TokenQueue:
 
     def unexpected_token_error(self, message: str, invalid_token: Token):
         history = self.rebuild_history(20)
-        # todo: is the history printed with quotes in strings? could be confusing perhaps.
         raise FredsonParseError(f"\n\n{history} <-- \n\n{message}, not '{invalid_token.lexeme}'")
 
     def rebuild_history(self, nbr_of_tokens) -> str:

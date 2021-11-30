@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import re
 
 from collections import deque
@@ -21,6 +23,7 @@ class LookupTable:
     illegal_control_character: set[str]
     string_termination: set[str]
     first_char: dict[str, Callable]
+    table: LookupTable = None
 
     def __init__(self):
         self.simple_tokens = {
@@ -85,12 +88,21 @@ class LookupTable:
         # The plus sign is handled differently than other simple tokens.
         self.first_char['+'] = tokenize_plus_sign
 
+    @staticmethod
+    def generate_table():
+        if LookupTable.table:
+            return LookupTable.table
+
+        table = LookupTable()
+        LookupTable.table = table
+        return table
+
 
 def tokenize(raw_json) -> TokenQueue:
     tokens = deque()
     start_index = 0
     length = len(raw_json)
-    lookup_table = LookupTable()
+    lookup_table = LookupTable.generate_table()
 
     while start_index < length:
         try:
@@ -330,9 +342,3 @@ def high_low_surrogate_algorithm(high_surrogate: str, low_surrogate: str) -> int
     low = int(low_surrogate, 16) - 0xDC00
     result = high + low + 0x10000
     return result
-
-
-if __name__ == '__main__':
-    toks = tokenize('[-]')
-    for t in toks:
-        print(t)
