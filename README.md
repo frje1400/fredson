@@ -23,10 +23,10 @@ various edge cases around unicode and error handling turned out to way more time
 I learned that having an extensive test suite is invaluable when implementing something like a JSON
 parser that has both a standard (RFC 8259), and many previous implementations. When my parser was in
 the state it passed the basic unit tests that I used during initial development, it was still in a very
-rough state.
+rough state. That rough state just wasn't visible yet because I hadn't run the parser through a comprehensive
+test suite. 
 
-That rough state just wasn't visible yet because I hadn't run the parser through a comprehensive
-test suite. If I hadn't found the test suite (link) developed by Nicholas Seriot, developing a JSON parser
+If I hadn't found the test suite (link) developed by Nicholas Seriot, developing a JSON parser
 would have been very time consuming. I estimate that reading the specification and developing the tests
 would have been more work than the actual implementation.
 
