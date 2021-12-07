@@ -2,7 +2,7 @@
 
 ## 1. Introduction
 
-A JSON parsers in Python. Developed for educational purposes only in order to get a feel for how
+A JSON parser written in Python. Developed for educational purposes only in order to get a feel for how
 a parser works. The parser passes an extensive test suite and should be fully compatible with Python's
 built in JSON module (i.e. implementation defined behaviour should match 1:1). It's very slow however
 due to being implemented in pure Python, and thus not suitable for production workloads.
@@ -26,7 +26,7 @@ the state it passed the basic unit tests that I used during initial development,
 rough state. That rough state just wasn't visible yet because I hadn't run the parser through a comprehensive
 test suite. 
 
-If I hadn't found the test suite (link) developed by Nicholas Seriot, developing a JSON parser
+If I hadn't found the [test suite](https://github.com/nst/JSONTestSuite) developed by Nicholas Seriot, developing a JSON parser
 would have been very time consuming. I estimate that reading the specification and developing the tests
 would have been more work than the actual implementation.
 
@@ -43,7 +43,12 @@ was that I called the pop() method on this queue once for every character in the
 Profiling showed that these calls to pop() dominated the total time to parse. While performance was
 linear, it was quite slow. Armed with this knowledge, I rewrote the tokenizer to work directly with a
 Python string. This rewrite resulted in a 2x speedup, with the downside that the code now looked "lower level"
-than with nicer queue abstractions.
+than with nicer queue abstractions. 
+
+One issue with working directly with a (big) Python string is that it's
+not obvious how you get a substring in O(1) time; it's necessary to copy the part of the string that you
+are interested in. This seem like a strange limitation considering that string are immutable and that should
+enable you to reference part of this data as a substring.
 
 However, one could argue that this 2x speedup was inconsequential since it's still roughly 100x slower
 than the built-in JSON module. I learned that to get acceptable performance out of Python for this kind
@@ -54,7 +59,10 @@ Using PyPy instead of CPython lead to a 3x speedup on a 25 MB test file.
 
 ### 2.3 Reference Implementation
 
-Having a reference implementation...
+Having a reference implementation, in this case the JSON module from Python's standard library, was very
+valuable during development. The reason for this is that it eliminates the need to research and create the "expected output"
+for a particular input. The expected output is simply what the reference implementation outputs for that
+particular input.
 
 
 
