@@ -50,10 +50,10 @@ not obvious how you get a substring in O(1) time; it's necessary to copy the par
 are interested in. This seem like a strange limitation considering that string are immutable and that should
 enable you to reference part of this data as a substring.
 
-However, one could argue that this 2x speedup was inconsequential since it's still roughly 100x slower
-than the built-in JSON module. I learned that to get acceptable performance out of Python for this kind
-of workload, I would need to use one of the many techniques for extending Python with native code, such
-as C-extensions, Cython or Numba. 
+However, one could argue that this 2x speedup that I achieved by rewriting the tokenizer was inconsequential
+since it's still roughly 100x slower than the built-in JSON module. I learned that to get acceptable performance
+out of Python for this kind of workload, I would need to use one of the many techniques for extending Python with
+native code, such as C-extensions, Cython or Numba. Using those techinques would involve a major rewrite.
 
 Using PyPy instead of CPython lead to a 3x speedup on a 25 MB test file.
 
