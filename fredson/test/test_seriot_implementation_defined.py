@@ -174,18 +174,12 @@ def test_i_string_UTF8_surrogate_UplusD800():
 
 
 def test_i_structure_500_nested_arrays():
-    # todo: it's legal according to rfc8295 to set a limit to the depth of nesting.
-    # work on increasing this limit to be more compatible with python json?
     test_string = load_json_file('i_structure_500_nested_arrays.json')
     with pytest.raises(FredsonParseError):
         fredson_parse(test_string)
 
-    # can handle nesting 500 levels deep.
-    json.loads(test_string)
-
 
 def test_i_structure_UTF_8_BOM_empty_object():
-    # todo: figure out what this actually tests.
     test_string = load_json_file('i_structure_UTF-8_BOM_empty_object.json')
     with pytest.raises(FredsonTokenError):
         fredson_parse(test_string)
